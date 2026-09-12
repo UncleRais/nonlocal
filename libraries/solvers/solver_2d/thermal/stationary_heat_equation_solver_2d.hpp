@@ -62,7 +62,6 @@ heat_equation_solution_2d<T, I> stationary_heat_equation_solver_2d(const std::sh
     Eigen::Matrix<T, Eigen::Dynamic, 1> residual = Eigen::Matrix<T, Eigen::Dynamic, 1>::Zero(mesh->container().nodes_count() + settings.is_neumann);
     Eigen::Matrix<T, Eigen::Dynamic, 1> residual_rad = Eigen::Matrix<T, Eigen::Dynamic, 1>::Zero(mesh->container().nodes_count() + settings.is_neumann);
 
-    const auto conductivity_parameters = evaluate_conductivity(*mesh, parameters, std::vector<T>(mesh->quad_shift(mesh->container().elements_2d_count()), T{0}));
     T difference = T{1};
     T norm_of_residual = T{1};
     size_t iteration = 0;
@@ -72,6 +71,7 @@ heat_equation_solution_2d<T, I> stationary_heat_equation_solver_2d(const std::sh
         std::swap(temperature_curr, temperature_prev);
         f = f_init;
         conductivity_matrix_2d<T, I, Matrix_Index> conductivity{mesh};
+        const auto conductivity_parameters = evaluate_conductivity(*mesh, parameters, mesh::utils::nodes_to_qnodes<T>(*mesh, temperature_prev));
         conductivity.compute(conductivity_parameters, settings.is_inner_nodes, settings.is_symmetric(), settings.is_neumann);
         convection_condition_2d(conductivity.matrix().inner(), *mesh, boundaries_conditions);
         residual = conductivity.matrix().inner().template selfadjointView<Eigen::Upper>() * temperature_prev;
@@ -81,7 +81,7 @@ heat_equation_solution_2d<T, I> stationary_heat_equation_solver_2d(const std::sh
             first_kind_matrix_fill_2d(conductivity.matrix().inner(), residual_rad, *mesh, boundaries_conditions);
             boundary_condition_first_kind_2d(f, *mesh, boundaries_conditions, conductivity.matrix().bound());
         }           
-        residual -= residual_rad + f;
+        residual += residual_rad - f;
         if (settings.is_symmetric()) {
             logger::info() << "Local matrix" << std::endl;
             if (settings.is_nonlinear_boundary) {                   
@@ -114,6 +114,7 @@ heat_equation_solution_2d<T, I> stationary_heat_equation_solver_2d(const std::sh
                        << ", norm(prev - curr) = " << difference 
                        << ", residual = "          << norm_of_residual << ";" << std::endl;
     }
+    const auto conductivity_parameters = evaluate_conductivity(*mesh, parameters, mesh::utils::nodes_to_qnodes<T>(*mesh, temperature_curr));
     heat_equation_solution_2d<T, I> solution{mesh, conductivity_parameters, temperature_curr};
     solution.calc_flux();
     return solution;
